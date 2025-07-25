@@ -194,6 +194,24 @@ pub struct LargeDSumCheckProof<F: JoltField, ProofTranscript: Transcript> {
     mle_claims: Vec<F>,
 }
 
+#[inline]
+fn get_coeffs<F: JoltField>(
+    mle_vec: &MultilinearPolynomial<F>,
+    j: usize,
+    order: BindingOrder,
+) -> (F, F) {
+    match order {
+        BindingOrder::HighToLow => (
+            mle_vec.get_bound_coeff(j),
+            mle_vec.get_bound_coeff(j + mle_vec.len() / 2),
+        ),
+        BindingOrder::LowToHigh => (
+            mle_vec.get_bound_coeff(2 * j),
+            mle_vec.get_bound_coeff(2 * j + 1),
+        ),
+    }
+}
+
 impl<F: JoltField, ProofTranscript: Transcript> LargeDSumCheckProof<F, ProofTranscript> {
     // Compute the initial claim for the sumcheck
     // val = \sum_{j_1, ..., j_d \in \{0, 1\}^T} eq(j, j_1, ..., j_d) \prod_{i=1}^d func(j_i)
@@ -205,6 +223,7 @@ impl<F: JoltField, ProofTranscript: Transcript> LargeDSumCheckProof<F, ProofTran
         previous_claim: &mut F,
         transcript: &mut ProofTranscript,
     ) -> (Self, Vec<F>) {
+        let order = BindingOrder::LowToHigh;
         let mut C = F::one();
         let mut C_summands = [F::one(), F::one()];
         let T = r_cycle.len().pow2();
@@ -251,19 +270,13 @@ impl<F: JoltField, ProofTranscript: Transcript> LargeDSumCheckProof<F, ProofTran
             let after_idx_evals = (0..size)
                 .into_par_iter()
                 .map(|j| {
-                    let mut cur = (
-                        mle_vec[0].get_bound_coeff(j),
-                        mle_vec[0].get_bound_coeff(j + mle_vec[0].len() / 2),
-                    );
+                    let mut cur = get_coeffs(&mle_vec[0], j, order);
 
                     let res: [(F, F); D1] = std::array::from_fn(|i| {
                         let entry = cur;
                         if i < D1 - 1 {
-                            cur = (
-                                cur.0 * mle_vec[i + 1].get_bound_coeff(j),
-                                cur.1
-                                    * mle_vec[i + 1].get_bound_coeff(j + mle_vec[i + 1].len() / 2),
-                            );
+                            let new_coeffs = get_coeffs(&mle_vec[i + 1], j, order);
+                            cur = (cur.0 * new_coeffs.0, cur.1 * new_coeffs.1);
                         }
 
                         entry
@@ -308,13 +321,8 @@ impl<F: JoltField, ProofTranscript: Transcript> LargeDSumCheckProof<F, ProofTran
                     .zip(after_idx_evals.par_iter().take(size))
                     .enumerate()
                     .map(|(j, (before_idx_eval, after_idx_evals))| {
-                        let at_idx_evals = [
-                            mle_vec[D - d - 1].get_bound_coeff(j),
-                            mle_vec[D - d - 1].get_bound_coeff(j + mle_vec[D - d - 1].len() / 2)
-                                + mle_vec[D - d - 1]
-                                    .get_bound_coeff(j + mle_vec[D - d - 1].len() / 2)
-                                - mle_vec[D - d - 1].get_bound_coeff(j),
-                        ];
+                        let coeffs = get_coeffs(&mle_vec[D - d - 1], j, order);
+                        let at_idx_evals = [coeffs.0, coeffs.1 + coeffs.1 - coeffs.0];
 
                         if d > 0 {
                             *before_idx_eval =
@@ -379,7 +387,7 @@ impl<F: JoltField, ProofTranscript: Transcript> LargeDSumCheckProof<F, ProofTran
                 C_summands[0] *= w_j;
                 C_summands[1] *= F::one() - w_j;
 
-                mle_vec[D - d - 1].bind_parallel(w_j, BindingOrder::HighToLow);
+                mle_vec[D - d - 1].bind_parallel(w_j, order);
             }
             drop(_guard);
             drop(inner_span);
@@ -516,7 +524,7 @@ mod test {
     }
 
     #[test]
-    fn test_large_d_optimization_sumcheck() {
+    fn test_large_d_optimization_sumcheck_correctness() {
         large_d_optimization_ra_virtualization::<15>(16, 1 << 10);
     }
 
