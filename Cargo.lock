@@ -1588,6 +1588,7 @@ dependencies = [
  "eyre",
  "jolt-core",
  "jolt-sdk",
+ "num-bigint",
  "rand",
  "rmp-serde",
  "serde",

@@ -83,6 +83,7 @@ jolt-sdk = { path = "./jolt-sdk" }
 jolt-core = { path = "./jolt-core" }
 tracer = { path = "./tracer" }
 common = { path = "./common" }
+num-bigint = "0.4.6"
 
 [profile.test]
 opt-level = 3

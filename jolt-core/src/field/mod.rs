@@ -186,3 +186,4 @@ where
 
 pub mod ark;
 pub mod tracked_ark;
+pub mod cbrt;
